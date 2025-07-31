@@ -6,7 +6,7 @@ on:
 jobs:
   rdp-tunnel:
     runs-on: windows-latest
-    timeout-minutes: 360
+    timeout-minutes: 360  # 6 jam
 
     steps:
       - name: Enable RDP and set password
@@ -41,7 +41,8 @@ ingress:
           [System.IO.File]::WriteAllText("config.yml", $config)
 
       - name: Start cloudflared tunnel
-        run: .\cloudflared.exe tunnel --config config.yml run
+        run: |
+          .\cloudflared.exe tunnel --config config.yml run
 
       - name: Show Connection Info
         run: |
