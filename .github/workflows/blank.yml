@@ -1,7 +1,7 @@
 name: Setup Cloudflared Tunnel for RDP
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:  # Manual trigger only
 
 jobs:
   rdp-tunnel:
@@ -9,15 +9,14 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: Enable RDP and create user
+      - name: Enable RDP and set password
         run: |
-          net user admin /add
-          net localgroup administrators admin /add
           Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
           Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" -Name "UserAuthentication" -Value 1
-          $pass = ConvertTo-SecureString "admin" -AsPlainText -Force
-          Set-LocalUser -Name "admin" -Password $pass
+          net user admin /add
+          net localgroup administrators admin /add
+          net user admin admin
 
       - name: Download cloudflared
         run: |
@@ -30,7 +29,7 @@ jobs:
 
       - name: Create config.yml
         run: |
-          Set-Content -Path "config.yml" -Value @"
+          $config = @"
 tunnel: 163edc35-e96f-4672-ae7e-735a8e21eb8c
 credentials-file: ./cred.json
 
@@ -39,9 +38,10 @@ ingress:
     service: rdp://localhost:3389
   - service: http_status:404
 "@
+          Set-Content -Path "config.yml" -Value $config
 
       - name: Start cloudflared tunnel
-        run: .\cloudflared.exe tunnel --config config.yml run
+        run: .\cloudflared.exe --config config.yml tunnel run
 
       - name: Show Connection Info
         run: |
