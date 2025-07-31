@@ -1,60 +1,46 @@
-name: Setup ngrok and Remote Desktop
+name: Free RDP with Cloudflared
 
 on:
   workflow_dispatch:
 
 jobs:
-  setup-ngrok:
+  rdp-tunnel:
     runs-on: windows-latest
-    timeout-minutes: 360  # 6 jam maksimal
+    timeout-minutes: 360
 
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v3
-
-      - name: Download ngrok
+      - name: Enable RDP
         run: |
-          Invoke-WebRequest https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip
-          Expand-Archive ngrok.zip -DestinationPath .
-          if (!(Test-Path .\ngrok.exe)) { throw "❌ Gagal ekstrak ngrok" }
-
-      - name: Autentikasi ngrok
-        run: .\ngrok.exe authtoken $Env:NGROK_AUTH_TOKEN
-        env:
-          NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
-
-      - name: Aktifkan Remote Desktop
-        run: |
-          Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0
+          Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name fDenyTSConnections -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-          Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" -Name "UserAuthentication" -Value 1
-
-      - name: Set password user
+      
+      - name: Set password
         run: |
-          $pass = ConvertTo-SecureString "P@ssw0rd!" -AsPlainText -Force
-          Set-LocalUser -Name "runneradmin" -Password $pass
-          Write-Output "🔐 Password user: P@ssw0rd!"
+          $password = ConvertTo-SecureString "P@ssw0rd!" -AsPlainText -Force
+          Set-LocalUser -Name "runneradmin" -Password $password
 
-      - name: Jalankan ngrok TCP dan log
+      - name: Download cloudflared
         run: |
-          Start-Process -FilePath .\ngrok.exe -ArgumentList "tcp 3389 --log=stdout" -NoNewWindow -RedirectStandardOutput ngrok.log
-          Start-Sleep -Seconds 20
+          Invoke-WebRequest https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe -OutFile cloudflared.exe
 
-      - name: Ambil alamat tunnel dari log
+      - name: Start tunnel
         run: |
-          $log = Get-Content ngrok.log -Raw
-          $match = Select-String -InputObject $log -Pattern "tcp://[^\s]+" | Select-Object -First 1
-          if ($match) {
-            $url = $match.Matches.Value
-            Write-Output "✅ Tunnel aktif: $url"
+          Start-Process .\cloudflared.exe -ArgumentList "tunnel --url rdp://localhost:3389" -NoNewWindow
+          Start-Sleep -Seconds 15
+
+      - name: Display tunnel URL
+        run: |
+          $log = Get-Content "$env:USERPROFILE\.cloudflared\*.log" -ErrorAction SilentlyContinue | Select-String "trycloudflare.com" | Select-Object -First 1
+          if ($log) {
+            Write-Output "✅ Connect here: $($log.Line)"
           } else {
-            Write-Output "⚠️ Gagal menemukan URL tunnel"
+            Write-Output "⚠️ Tunnel URL not found."
           }
 
-      - name: Jaga aktif (6 jam)
+      - name: Keep alive
         run: |
           for ($i = 0; $i -lt 72; $i++) {
-            Write-Host "🕐 Menunggu... ($($i * 5) menit)"
+            Write-Host "💤 Keep alive... $($i * 5) min"
             Start-Sleep -Seconds 300
           }
         continue-on-error: true
