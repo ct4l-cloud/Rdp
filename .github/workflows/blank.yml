@@ -1,4 +1,4 @@
-name: Free RDP with Cloudflared
+name: Free RDP with Cloudflared (No Card Required)
 
 on:
   workflow_dispatch:
@@ -6,41 +6,47 @@ on:
 jobs:
   rdp-tunnel:
     runs-on: windows-latest
-    timeout-minutes: 360
+    timeout-minutes: 360  # Maksimum 6 jam
 
     steps:
       - name: Enable RDP
         run: |
           Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name fDenyTSConnections -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-      
-      - name: Set password
+          Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" -Name "UserAuthentication" -Value 1
+
+      - name: Set Password for runneradmin
         run: |
           $password = ConvertTo-SecureString "P@ssw0rd!" -AsPlainText -Force
           Set-LocalUser -Name "runneradmin" -Password $password
+          Write-Host "🔐 Login with user: runneradmin / P@ssw0rd!"
 
-      - name: Download cloudflared
+      - name: Download Cloudflared
         run: |
           Invoke-WebRequest https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe -OutFile cloudflared.exe
 
-      - name: Start tunnel
+      - name: Start Tunnel using Cloudflared
         run: |
-          Start-Process .\cloudflared.exe -ArgumentList "tunnel --url rdp://localhost:3389" -NoNewWindow
-          Start-Sleep -Seconds 15
+          .\cloudflared.exe tunnel --url rdp://localhost:3389 > tunnel.log 2>&1 &
+          Start-Sleep -Seconds 20
 
-      - name: Display tunnel URL
+      - name: Get Tunnel URL
         run: |
-          $log = Get-Content "$env:USERPROFILE\.cloudflared\*.log" -ErrorAction SilentlyContinue | Select-String "trycloudflare.com" | Select-Object -First 1
-          if ($log) {
-            Write-Output "✅ Connect here: $($log.Line)"
+          $log = Get-Content tunnel.log -Raw
+          $match = Select-String "https://[a-zA-Z0-9\-]+\.trycloudflare\.com" -InputObject $log | Select-Object -First 1
+          if ($match) {
+            $url = $match.Matches.Value
+            Write-Output "✅ Your RDP tunnel is ready: $url"
           } else {
-            Write-Output "⚠️ Tunnel URL not found."
+            Write-Output "⚠️ Tunnel URL not found in log."
+            Write-Output "Full tunnel.log contents:"
+            Get-Content tunnel.log
           }
 
-      - name: Keep alive
+      - name: Keep Alive (6 hours)
         run: |
           for ($i = 0; $i -lt 72; $i++) {
-            Write-Host "💤 Keep alive... $($i * 5) min"
+            Write-Host "🟢 Session alive... $($i * 5) minutes"
             Start-Sleep -Seconds 300
           }
         continue-on-error: true
