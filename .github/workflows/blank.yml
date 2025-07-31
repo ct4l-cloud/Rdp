@@ -38,10 +38,10 @@ ingress:
     service: rdp://localhost:3389
   - service: http_status:404
 "@
-          Set-Content -Path "config.yml" -Value $config
+          [System.IO.File]::WriteAllText("config.yml", $config)
 
       - name: Start cloudflared tunnel
-        run: .\cloudflared.exe --config config.yml tunnel run
+        run: .\cloudflared.exe tunnel --config config.yml run
 
       - name: Show Connection Info
         run: |
