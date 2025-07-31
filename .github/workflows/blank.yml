@@ -26,10 +26,12 @@ jobs:
             $retry--
           }
           if (!(Test-Path ngrok.zip)) { throw "❌ Failed to download ngrok after retries." }
+
       - name: Extract ngrok
         run: |
           Expand-Archive ngrok.zip -DestinationPath .
           if (!(Test-Path .\ngrok.exe)) { throw "❌ Failed to extract ngrok." }
+
       - name: Update ngrok
         run: .\ngrok.exe update
 
@@ -43,17 +45,28 @@ jobs:
           Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
           Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" -Name "UserAuthentication" -Value 1
+
       - name: Set Password for runneradmin
         run: |
           $user = Get-LocalUser -Name "runneradmin"
           if ($user.Enabled -eq $false) { Enable-LocalUser -Name "runneradmin" }
           $secPass = ConvertTo-SecureString "P@ssw0rd!" -AsPlainText -Force
           Set-LocalUser -Name "runneradmin" -Password $secPass
+
       - name: Start ngrok TCP tunnel (RDP port)
         run: |
-          Start-Process -FilePath .\ngrok.exe -ArgumentList "tcp 3389" -WindowStyle Hidden
-          Start-Sleep -Seconds 10
-          Get-Content ngrok.log -ErrorAction SilentlyContinue
+          Start-Process -FilePath .\ngrok.exe -ArgumentList "tcp 3389 --log=stdout --log=ngrok.log" -NoNewWindow
+          for ($i = 0; $i -lt 12; $i++) {
+            try {
+              $null = Invoke-RestMethod -Uri "http://127.0.0.1:4040/api/tunnels"
+              Write-Host "✅ Ngrok API is ready!"
+              break
+            } catch {
+              Write-Host "⏳ Waiting for ngrok API..."
+              Start-Sleep -Seconds 5
+            }
+          }
+
       - name: Display connection info
         run: |
           $apiUrl = "http://127.0.0.1:4040/api/tunnels"
@@ -68,11 +81,21 @@ jobs:
           } catch {
             Write-Output "⚠️ Ngrok API not responding."
           }
+
+      - name: Debug ngrok log (optional)
+        if: failure()
+        run: |
+          if (Test-Path "ngrok.log") {
+            Write-Output "📄 ngrok.log content:"
+            Get-Content ngrok.log -Tail 50
+          } else {
+            Write-Output "❌ No ngrok.log found."
+          }
+
       - name: Keep Alive (6 hours)
         run: |
           for ($i = 0; $i -lt 72; $i++) {
-            Write-Host "⏳ Still alive... Hour: $($i * 5) minutes"
+            Write-Host "⏳ Still alive... Minute: $($i * 5)"
             Start-Sleep -Seconds 300
           }
         continue-on-error: true
-        
