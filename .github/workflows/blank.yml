@@ -9,13 +9,15 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: Enable RDP and set password
+      - name: Enable RDP and create user
         run: |
+          net user admin /add
+          net localgroup administrators admin /add
           Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
           Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" -Name "UserAuthentication" -Value 1
-          $pass = ConvertTo-SecureString "P@ssw0rd!" -AsPlainText -Force
-          Set-LocalUser -Name "runneradmin" -Password $pass
+          $pass = ConvertTo-SecureString "admin" -AsPlainText -Force
+          Set-LocalUser -Name "admin" -Password $pass
 
       - name: Download cloudflared
         run: |
@@ -29,14 +31,14 @@ jobs:
       - name: Create config.yml
         run: |
           Set-Content -Path "config.yml" -Value @"
-          tunnel: 163edc35-e96f-4672-ae7e-735a8e21eb8c
-          credentials-file: ./cred.json
+tunnel: 163edc35-e96f-4672-ae7e-735a8e21eb8c
+credentials-file: ./cred.json
 
-          ingress:
-            - hostname: ${{ secrets.CLOUDFLARED_TUNNEL_DOMAIN }}
-              service: rdp://localhost:3389
-            - service: http_status:404
-          "@
+ingress:
+  - hostname: ${{ secrets.CLOUDFLARED_TUNNEL_DOMAIN }}
+    service: rdp://localhost:3389
+  - service: http_status:404
+"@
 
       - name: Start cloudflared tunnel
         run: .\cloudflared.exe tunnel --config config.yml run
@@ -44,8 +46,8 @@ jobs:
       - name: Show Connection Info
         run: |
           echo "✅ Connect to: ${{ secrets.CLOUDFLARED_TUNNEL_DOMAIN }} (Port 3389)"
-          echo "🔑 Username: runneradmin"
-          echo "🔒 Password: P@ssw0rd!"
+          echo "🔑 Username: admin"
+          echo "🔒 Password: admin"
 
       - name: Keep Alive (6h)
         run: |
