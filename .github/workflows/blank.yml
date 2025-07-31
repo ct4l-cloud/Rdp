@@ -1,12 +1,12 @@
 name: Setup Cloudflared Tunnel for RDP
 
 on:
-  workflow_dispatch:  # Manual trigger only
+  workflow_dispatch:
 
 jobs:
   rdp-tunnel:
     runs-on: windows-latest
-    timeout-minutes: 360  # 6 jam
+    timeout-minutes: 360
 
     steps:
       - name: Enable RDP and set password
@@ -27,18 +27,15 @@ jobs:
           $b64 = "${{ secrets.CLOUDFLARED_TUNNEL_CREDENTIALS }}"
           [IO.File]::WriteAllBytes("cred.json", [Convert]::FromBase64String($b64))
 
-      - name: Create config.yml
+      - name: Create config.yml safely
         run: |
-          $config = @"
-tunnel: 163edc35-e96f-4672-ae7e-735a8e21eb8c
-credentials-file: ./cred.json
-
-ingress:
-  - hostname: ${{ secrets.CLOUDFLARED_TUNNEL_DOMAIN }}
-    service: rdp://localhost:3389
-  - service: http_status:404
-"@
-          [System.IO.File]::WriteAllText("config.yml", $config)
+          Set-Content -Path config.yml -Value "tunnel: 163edc35-e96f-4672-ae7e-735a8e21eb8c"
+          Add-Content -Path config.yml -Value "credentials-file: ./cred.json"
+          Add-Content -Path config.yml -Value ""
+          Add-Content -Path config.yml -Value "ingress:"
+          Add-Content -Path config.yml -Value "  - hostname: ${{ secrets.CLOUDFLARED_TUNNEL_DOMAIN }}"
+          Add-Content -Path config.yml -Value "    service: rdp://localhost:3389"
+          Add-Content -Path config.yml -Value "  - service: http_status:404"
 
       - name: Start cloudflared tunnel
         run: |
