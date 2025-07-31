@@ -1,55 +1,77 @@
-name: Setup Cloudflared Tunnel for RDP
+name: Setup ngrok and Remote Desktop
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:  # Manual trigger only
 
 jobs:
-  rdp-tunnel:
+  setup-ngrok:
     runs-on: windows-latest
-    timeout-minutes: 360
+    timeout-minutes: 360  # Max allowed: 6 hours
 
     steps:
-      - name: Enable RDP and set password
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Download ngrok (with retry)
+        run: |
+          $retry = 3
+          while ($retry -gt 0) {
+            try {
+              Invoke-WebRequest https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip -UseBasicParsing
+              if (Test-Path ngrok.zip) { break }
+            } catch {
+              Write-Host "Retrying download... ($retry left)"
+            }
+            Start-Sleep -Seconds 5
+            $retry--
+          }
+          if (!(Test-Path ngrok.zip)) { throw "❌ Failed to download ngrok after retries." }
+      - name: Extract ngrok
+        run: |
+          Expand-Archive ngrok.zip -DestinationPath .
+          if (!(Test-Path .\ngrok.exe)) { throw "❌ Failed to extract ngrok." }
+      - name: Update ngrok
+        run: .\ngrok.exe update
+
+      - name: Authenticate ngrok
+        run: .\ngrok.exe authtoken $Env:NGROK_AUTH_TOKEN
+        env:
+          NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+
+      - name: Enable Remote Desktop
         run: |
           Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
           Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" -Name "UserAuthentication" -Value 1
-          net user admin /add
-          net localgroup administrators admin /add
-          net user admin "Taopikjha12"
-
-      - name: Download cloudflared
+      - name: Set Password for runneradmin
         run: |
-          Invoke-WebRequest "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe" -OutFile "cloudflared.exe"
-
-      - name: Decode and save credentials file
+          $user = Get-LocalUser -Name "runneradmin"
+          if ($user.Enabled -eq $false) { Enable-LocalUser -Name "runneradmin" }
+          $secPass = ConvertTo-SecureString "P@ssw0rd!" -AsPlainText -Force
+          Set-LocalUser -Name "runneradmin" -Password $secPass
+      - name: Start ngrok TCP tunnel (RDP port)
         run: |
-          $b64 = "${{ secrets.CLOUDFLARED_TUNNEL_CREDENTIALS }}"
-          [IO.File]::WriteAllBytes("cred.json", [Convert]::FromBase64String($b64))
-
-      - name: Create config.yml safely
+          Start-Process -FilePath .\ngrok.exe -ArgumentList "tcp 3389" -WindowStyle Hidden
+          Start-Sleep -Seconds 10
+          Get-Content ngrok.log -ErrorAction SilentlyContinue
+      - name: Display connection info
         run: |
-          Set-Content -Path config.yml -Value "tunnel: 163edc35-e96f-4672-ae7e-735a8e21eb8c"
-          Add-Content -Path config.yml -Value "credentials-file: ./cred.json"
-          Add-Content -Path config.yml -Value ""
-          Add-Content -Path config.yml -Value "ingress:"
-          Add-Content -Path config.yml -Value "  - hostname: ${{ secrets.CLOUDFLARED_TUNNEL_DOMAIN }}"
-          Add-Content -Path config.yml -Value "    service: rdp://localhost:3389"
-          Add-Content -Path config.yml -Value "  - service: http_status:404"
-
-      - name: Start cloudflared tunnel
-        run: |
-          .\cloudflared.exe tunnel --config config.yml run
-
-      - name: Show Connection Info
-        run: |
-          echo "✅ Connect to: ${{ secrets.CLOUDFLARED_TUNNEL_DOMAIN }} (Port 3389)"
-          echo "🔑 Username: admin"
-          echo "🔒 Password: Taopikjha12"
-
-      - name: Keep Alive (6h)
+          $apiUrl = "http://127.0.0.1:4040/api/tunnels"
+          try {
+            $response = Invoke-RestMethod -Uri $apiUrl
+            $tcpAddr = ($response.tunnels | Where-Object { $_.proto -eq "tcp" }).public_url
+            if ($tcpAddr) {
+              Write-Output "✅ Connect using: $tcpAddr"
+            } else {
+              Write-Output "⚠️ Unable to fetch tunnel info yet."
+            }
+          } catch {
+            Write-Output "⚠️ Ngrok API not responding."
+          }
+      - name: Keep Alive (6 hours)
         run: |
           for ($i = 0; $i -lt 72; $i++) {
-            Write-Host "⏳ Still alive: $($i * 5) minutes"
+            Write-Host "⏳ Still alive... Hour: $($i * 5) minutes"
             Start-Sleep -Seconds 300
           }
+        continue-on-error: true
