@@ -16,7 +16,7 @@ jobs:
           Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" -Name "UserAuthentication" -Value 1
           net user admin /add
           net localgroup administrators admin /add
-          net user admin admin
+          net user admin "Taopikjha12"
 
       - name: Download cloudflared
         run: |
@@ -45,7 +45,7 @@ jobs:
         run: |
           echo "✅ Connect to: ${{ secrets.CLOUDFLARED_TUNNEL_DOMAIN }} (Port 3389)"
           echo "🔑 Username: admin"
-          echo "🔒 Password: admin"
+          echo "🔒 Password: Taopikjha12"
 
       - name: Keep Alive (6h)
         run: |
