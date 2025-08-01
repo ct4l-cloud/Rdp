@@ -43,12 +43,12 @@ jobs:
           Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
           Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" -Name "UserAuthentication" -Value 1
-      - name: Set Password for enzoTeam
+      - name: Set Password for runneradmin
         run: |
-          $user = Get-LocalUser -Name "enzoTeam"
-          if ($user.Enabled -eq $false) { Enable-LocalUser -Name "enzoTeam" }
-          $secPass = ConvertTo-SecureString "Taopikjha12" -AsPlainText -Force
-          Set-LocalUser -Name "enzoTeam" -Password $secPass
+          $user = Get-LocalUser -Name "runneradmin"
+          if ($user.Enabled -eq $false) { Enable-LocalUser -Name "runneradmin" }
+          $secPass = ConvertTo-SecureString "P@ssw0rd!" -AsPlainText -Force
+          Set-LocalUser -Name "runneradmin" -Password $secPass
       - name: Start ngrok TCP tunnel (RDP port)
         run: |
           Start-Process -FilePath .\ngrok.exe -ArgumentList "tcp 3389" -WindowStyle Hidden
